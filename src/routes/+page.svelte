@@ -23,7 +23,7 @@
 
   function fire() {
     const radians = (angle * Math.PI) / 180;
-    const speed = power;
+    const speed = power / 2.75;
     const vx = Math.cos(radians) * speed;
     const vy = -Math.sin(radians) * speed;
     projectile = {
@@ -43,8 +43,8 @@
   }
 
   function drawTank(t, angle, color = 'gray') {
-    ctx.fillStyle = color;
-    ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
+      ctx.fillStyle = color;
+      ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
     ctx.beginPath();
     const turretLength = 20;
     const turretAngle = (angle * Math.PI) / 180;
@@ -52,10 +52,10 @@
     const turretY = canvas.height - 20 - t.height;
     ctx.moveTo(turretX, turretY);
     ctx.lineTo(turretX + Math.cos(turretAngle) * turretLength, turretY - Math.sin(turretAngle) * turretLength);
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -68,7 +68,7 @@
     for (const id in players) {
       const p = players[id];
       drawTank(p.tank, p.angle, 'blue');
-    }
+  }
 
     if (projectile) {
       ctx.beginPath();
