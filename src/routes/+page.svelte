@@ -22,7 +22,11 @@
   let playerId = null;
 
   function fire() {
-    const radians = (angle * Math.PI) / 180;
+    // Converting angle (0=up, -90=left, 90=right) to standard radians
+    // We need to adjust the angle for the canvas coordinate system
+    const adjustedAngle = 90 - angle; // This converts our system to standard angle (0=right, 90=up)
+    const radians = (adjustedAngle * Math.PI) / 180;
+    
     const speed = power;
     const vx = Math.cos(radians) * speed;
     const vy = -Math.sin(radians) * speed;
@@ -50,7 +54,7 @@
   }
 
   function drawTank(t, angle, color = 'gray') {
-    ctx.fillStyle = color;
+    ctx.fillStyle = t.color || color;
     ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
     ctx.beginPath();
     const turretLength = 20;
@@ -78,7 +82,9 @@
     drawTank(tank, angle);
     for (const id in players) {
       const p = players[id];
-      drawTank(p.tank, p.angle, 'blue');
+      if (p && p.tank) {
+        drawTank(p.tank, p.angle || 45);
+      }
     }
 
     if (projectile) {
