@@ -1,28 +1,37 @@
-# sv
+# Tanks Game
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A browser-based multiplayer artillery game inspired by Scorched Earth. The game allows 2–8 players to connect and take turns firing projectiles using angle and power inputs, with future support for wind, weapons, and terrain deformation.
 
-## Creating a project
+## Project Setup
 
-If you're seeing this, you've probably already done this step. Congrats!
+To get started, install the project dependencies:
 
 ```bash
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
+npm install
 ```
 
-## Developing
+## Running the Game
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+You can run both the frontend and backend servers with a single command:
 
 ```bash
+npm start
+```
+
+This will concurrently start:
+- The SvelteKit frontend on http://localhost:5173
+- The Socket.IO backend server on http://localhost:3001
+
+## Development
+
+For separate development workflows, you can run the frontend and backend individually:
+
+```bash
+# Start just the frontend
 npm run dev
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+# Start just the backend
+npm run server
 ```
 
 ## Building

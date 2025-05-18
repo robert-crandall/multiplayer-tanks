@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "intendedUse": "This is a browser-based multiplayer artillery game inspired by Scorched Earth. The goal is to allow 2–8 players to connect and take turns firing projectiles using angle and power inputs, with future support for wind, weapons, and terrain deformation.",
+
+  "frontend": {
+    "framework": "SvelteKit",
+    "description": "Uses SvelteKit 2 for UI and game rendering via an HTML5 Canvas. Each player can adjust angle and power using sliders and click 'Fire' to launch a projectile. Tanks and projectiles are drawn on the canvas.",
+    "keyFiles": ["src/routes/+page.svelte"],
+    "canvas": {
+      "usage": "Draws tanks, projectiles, ground, and sky. Updates every frame using requestAnimationFrame.",
+      "features": ["dynamic projectile simulation", "tank rendering with turret rotation", "angle and power UI controls"]
+    },
+    "realtimeSync": {
+      "library": "socket.io-client",
+      "features": [
+        "Connects to Node.js Socket.IO server",
+        "Synchronizes tank position and angle with other players",
+        "Displays all other players' tanks on screen"
+      ]
+    }
+  },
+
+  "backend": {
+    "language": "Node.js",
+    "libraries": ["Express", "Socket.IO"],
+    "file": "server.js",
+    "description": "Manages real-time multiplayer logic. Tracks connected players, syncs their tank data, and broadcasts join/leave events."
+  },
+
+  "featuresPlanned": [
+    "Add weapon selection and projectile types",
+    "Implement wind effects on projectile path",
+    "Support API-based input and output for AI-controlled clients",
+    "Turn-based multiplayer with UI indicators",
+    "Collision detection and terrain deformation"
+  ],
+
+  "howToRun": {
+    "combined": "Run `npm start` in the root directory to start both the frontend and backend servers simultaneously.",
+    "frontend": "Run `npm run dev` inside the SvelteKit project directory.",
+    "backend": "Run `npm run server` in the root directory to start the Socket.IO server on port 3001."
+  }
+}
