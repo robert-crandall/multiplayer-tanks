@@ -26,7 +26,8 @@
     width: 40,
     height: 20,
     color: 'gray',
-    health: 100 // Add health property
+    health: 100, // Add health property
+    destroyed: false // Add destroyed property
   };
 
   let players = {}; // other players
@@ -93,6 +94,11 @@
         }
       }
     }
+    
+    // Notify other players about terrain damage
+    if (socket) {
+      socket.emit('terrain-damaged', { x, y, radius });
+    }
   }
 
   function fire() {
@@ -116,7 +122,7 @@
     const projectileStartX = turretX + Math.cos(radians) * turretLength;
     const projectileStartY = turretY - Math.sin(radians) * turretLength;
     
-    projectile = {
+    const newProjectile = {
       x: projectileStartX,
       y: projectileStartY,
       vx,
@@ -124,6 +130,11 @@
       gravity: 0.5,
       weapon: currentWeapon // Attach current weapon type to projectile
     };
+    
+    // Send projectile to server instead of creating locally
+    if (socket) {
+      socket.emit('player-fired', newProjectile);
+    }
   }
 
   // Update explosion animations
@@ -157,61 +168,81 @@
   function updateProjectile() {
     if (!projectile) return;
     
-    // Store previous position for collision detection
-    const prevX = projectile.x;
-    const prevY = projectile.y;
-    
-    // Update position
-    projectile.vy += projectile.gravity;
-    projectile.x += projectile.vx;
-    projectile.y += projectile.vy;
-    
-    // Check for terrain collision
-    if (checkTerrainCollision(projectile.x, projectile.y)) {
-      // Add explosion visual effect
-      explosions.push({
-        x: projectile.x,
-        y: projectile.y,
-        radius: projectile.weapon.radius,
-        color: projectile.weapon.color,
-        maxRadius: projectile.weapon.radius,
-        currentRadius: 0,
-        growing: true
-      });
+    // Only update projectile physics if it's our projectile
+    // Server handles updates for other players' projectiles
+    if (!projectile.playerId || projectile.playerId === playerId) {
+      // Store previous position for collision detection
+      const prevX = projectile.x;
+      const prevY = projectile.y;
       
-      // Explosion effect at collision point
-      destroyTerrain(projectile.x, projectile.y, projectile.weapon.radius);
+      // Update position
+      projectile.vy += projectile.gravity;
+      projectile.x += projectile.vx;
+      projectile.y += projectile.vy;
       
-      // Check for tank damage from explosion
-      checkTankDamage(projectile.x, projectile.y, projectile.weapon.radius, projectile.weapon.damage);
+      // Check for terrain collision
+      if (checkTerrainCollision(projectile.x, projectile.y)) {
+        // Create explosion object
+        const explosion = {
+          x: projectile.x,
+          y: projectile.y,
+          radius: projectile.weapon.radius,
+          color: projectile.weapon.color,
+          maxRadius: projectile.weapon.radius,
+          currentRadius: 0,
+          growing: true
+        };
+        
+        // Add explosion locally
+        explosions.push(explosion);
+        
+        // Send to server if this is our projectile
+        if (socket && projectile.playerId === playerId) {
+          socket.emit('explosion-created', explosion);
+        }
+        
+        // Explosion effect at collision point
+        destroyTerrain(projectile.x, projectile.y, projectile.weapon.radius);
+        
+        // Check for tank damage from explosion
+        checkTankDamage(projectile.x, projectile.y, projectile.weapon.radius, projectile.weapon.damage);
+        
+        projectile = null; // Remove projectile after collision
+        return;
+      }
       
-      projectile = null; // Remove projectile after collision
-      return;
-    }
-    
-    // Check for direct tank collision
-    if (checkTankCollision(projectile.x, projectile.y)) {
-      // Add explosion at tank hit point
-      explosions.push({
-        x: projectile.x,
-        y: projectile.y,
-        radius: projectile.weapon.radius,
-        color: projectile.weapon.color,
-        maxRadius: projectile.weapon.radius,
-        currentRadius: 0,
-        growing: true
-      });
+      // Check for direct tank collision
+      if (checkTankCollision(projectile.x, projectile.y)) {
+        // Create explosion object
+        const explosion = {
+          x: projectile.x,
+          y: projectile.y,
+          radius: projectile.weapon.radius,
+          color: projectile.weapon.color,
+          maxRadius: projectile.weapon.radius,
+          currentRadius: 0,
+          growing: true
+        };
+        
+        // Add explosion locally
+        explosions.push(explosion);
+        
+        // Send to server if this is our projectile
+        if (socket && projectile.playerId === playerId) {
+          socket.emit('explosion-created', explosion);
+        }
+        
+        // Still create terrain damage on tank hit
+        destroyTerrain(projectile.x, projectile.y, projectile.weapon.radius);
+        
+        projectile = null; // Remove projectile after collision
+        return;
+      }
       
-      // Still create terrain damage on tank hit
-      destroyTerrain(projectile.x, projectile.y, projectile.weapon.radius);
-      
-      projectile = null; // Remove projectile after collision
-      return;
-    }
-    
-    // Check for out of bounds
-    if (projectile.x < 0 || projectile.x > canvas.width || projectile.y > canvas.height) {
-      projectile = null;
+      // Check for out of bounds
+      if (projectile.x < 0 || projectile.x > canvas.width || projectile.y > canvas.height) {
+        projectile = null;
+      }
     }
   }
   
@@ -269,7 +300,7 @@
       targetTank.destroyed = true;
       
       // Add a large explosion effect when a tank is destroyed
-      explosions.push({
+      const explosion = {
         x: targetTank.x + targetTank.width / 2,
         y: canvas.height - 20 - targetTank.height / 2,
         radius: 35,
@@ -277,15 +308,38 @@
         maxRadius: 35,
         currentRadius: 0,
         growing: true
-      });
+      };
+      
+      // Add explosion locally
+      explosions.push(explosion);
+      
+      // Send to server
+      if (socket) {
+        socket.emit('explosion-created', explosion);
+      }
     }
     
-    // If this is our tank, inform the server about health change
-    if (targetTank === tank && socket && playerId) {
-      socket.emit('update-player', { 
-        angle, 
-        power, 
-        tank 
+    // Send tank damage to server
+    let targetId = null;
+    
+    if (targetTank === tank) {
+      // This is our tank
+      targetId = playerId;
+    } else {
+      // Find the player id for this tank
+      for (const id in players) {
+        if (players[id].tank === targetTank) {
+          targetId = id;
+          break;
+        }
+      }
+    }
+    
+    // Send damage to server
+    if (socket && targetId) {
+      socket.emit('tank-damaged', {
+        targetId,
+        damage
       });
     }
   }
@@ -446,15 +500,19 @@
   }
 
   function setupSocket() {
-    socket = io('http://localhost:3001');
+    // Get current host to support connections from different computers on same LAN
+    const currentHost = window.location.hostname;
+    socket = io(`http://${currentHost}:3001`);
 
-    socket.on('init', ({ id, players: existingPlayers }) => {
+    socket.on('init', ({ id, players: existingPlayers, projectiles: serverProjectiles, explosions: serverExplosions, terrainState }) => {
       playerId = id;
       
       // Set our own tank position from server data
       if (existingPlayers[id] && existingPlayers[id].tank) {
         tank.x = existingPlayers[id].tank.x;
         tank.color = existingPlayers[id].tank.color || 'gray';
+        tank.health = existingPlayers[id].tank.health;
+        tank.destroyed = existingPlayers[id].tank.destroyed || false;
       }
       
       // Get other players
@@ -467,6 +525,35 @@
           if (players[pid].tank) {
             players[pid].tank.y = canvas.height - 20 - players[pid].tank.height;
           }
+        }
+      }
+      
+      // Initialize with server state if available
+      if (serverProjectiles && serverProjectiles.length > 0) {
+        // Only set projectile to the first one (client only handles one at a time)
+        projectile = serverProjectiles[0];
+      }
+      
+      if (serverExplosions && serverExplosions.length > 0) {
+        explosions = [...serverExplosions];
+      }
+      
+      // If terrain data exists on server, use it
+      if (terrainState && canvas) {
+        terrainData = new ImageData(
+          new Uint8ClampedArray(terrainState.data),
+          terrainState.width,
+          terrainState.height
+        );
+      } else if (canvas) {
+        // Otherwise initialize terrain and send to server
+        initTerrain();
+        if (socket) {
+          socket.emit('terrain-updated', {
+            data: Array.from(terrainData.data),
+            width: terrainData.width,
+            height: terrainData.height
+          });
         }
       }
     });
@@ -486,6 +573,61 @@
 
     socket.on('player-left', ({ id }) => {
       delete players[id];
+    });
+    
+    // Projectile and explosion handling
+    socket.on('projectile-added', (newProjectile) => {
+      if (newProjectile.playerId !== playerId) {
+        projectile = newProjectile;
+      }
+    });
+    
+    socket.on('game-state-update', ({ projectiles: serverProjectiles, explosions: serverExplosions }) => {
+      // We only care about the first projectile in single player mode
+      if (serverProjectiles && serverProjectiles.length > 0) {
+        // Skip updating if it's our own projectile
+        const firstProjectile = serverProjectiles[0];
+        if (firstProjectile.playerId !== playerId) {
+          projectile = firstProjectile;
+        }
+      } else {
+        projectile = null;
+      }
+      
+      // Sync explosions
+      if (serverExplosions) {
+        explosions = [...serverExplosions];
+      }
+    });
+    
+    // Terrain update handling
+    socket.on('terrain-updated', (terrainData) => {
+      // Update terrain with server data
+      if (terrainData && canvas) {
+        terrainData = new ImageData(
+          new Uint8ClampedArray(terrainData.data),
+          terrainData.width,
+          terrainData.height
+        );
+      }
+    });
+    
+    socket.on('terrain-damaged', ({ x, y, radius }) => {
+      destroyTerrain(x, y, radius);
+    });
+    
+    socket.on('explosion-created', (explosionData) => {
+      explosions.push(explosionData);
+    });
+    
+    socket.on('tank-health-update', ({ id, health, destroyed }) => {
+      if (id === playerId) {
+        tank.health = health;
+        tank.destroyed = destroyed;
+      } else if (players[id] && players[id].tank) {
+        players[id].tank.health = health;
+        players[id].tank.destroyed = destroyed;
+      }
     });
   }
 
