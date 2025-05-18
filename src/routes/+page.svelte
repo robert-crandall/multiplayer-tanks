@@ -27,7 +27,7 @@
     const adjustedAngle = 90 - angle; // This converts our system to standard angle (0=right, 90=up)
     const radians = (adjustedAngle * Math.PI) / 180;
     
-    const speed = power;
+    const speed = power / 2.75;
     const vx = Math.cos(radians) * speed;
     const vy = -Math.sin(radians) * speed;
     
