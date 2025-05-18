@@ -15,47 +15,111 @@
   const weaponTypes = {
     standard: { name: "Standard Shell", radius: 15, color: "red", damage: 25 },
     large: { name: "Large Shell", radius: 25, color: "orange", damage: 40 },
-    small: { name: "Small Shell", radius: 8, color: "yellow", damage: 10 }
+    small: { name: "Small Shell", radius: 8, color: "yellow", damage: 10 },
+    hyper: { name: "HyperTech Shell", radius: 3, color: "blue", damage: 80 },
+    nova: { name: "Nova Shell", radius: 50, color: "green", damage: 5 }
   };
   
   let currentWeapon = weaponTypes.standard; // Default weapon
 
   const tank = {
-    x: 50, // Initial position, will be set by server
-    y: 0,  // Will be adjusted based on canvas height
-    width: 40,
-    height: 20,
-    color: 'gray',
-    health: 100 // Add health property
-  };
+  x: 50,
+  y: -40, // Start high above terrain
+  vy: 0, // Vertical velocity
+  width: 40,
+  height: 20,
+  color: 'gray',
+  health: 100
+};
+
+// 2. In your draw or loop function, add this gravity logic:
+function updateTankGravity() {
+  // Only apply gravity if tank is not destroyed
+  if (tank.destroyed) return;
+
+  // Gravity constant
+  const gravity = 0.7;
+
+  // Find the terrain surface under the tank's center
+  const tankBottomX = tank.x + tank.width / 2;
+  const terrainY = getTerrainYAt(tankBottomX);
+
+  // If tank is above terrain, apply gravity
+  if (tank.y + tank.height < terrainY) {
+    tank.vy += gravity;
+    tank.y += tank.vy;
+
+    // Clamp so tank doesn't go through terrain
+    if (tank.y + tank.height > terrainY) {
+      tank.y = terrainY - tank.height;
+      tank.vy = 0;
+    }
+  } else {
+    // On terrain, reset vy
+    tank.y = terrainY - tank.height;
+    tank.vy = 0;
+  }
+}
+
+
 
   let players = {}; // other players
   let socket;
   let playerId = null;
+  let heights = [];
 
-  // Initialize terrain data
-  function initTerrain() {
-    const terrainHeight = 20; // Height of the terrain from bottom
-    terrainData = new ImageData(canvas.width, canvas.height);
-    
-    // Initialize with transparent pixels
-    for (let i = 0; i < terrainData.data.length; i += 4) {
-      terrainData.data[i] = 0;     // R
-      terrainData.data[i + 1] = 0; // G
-      terrainData.data[i + 2] = 0; // B
-      terrainData.data[i + 3] = 0; // A (transparent)
+ function initTerrain() {
+  const terrainHeight = 20;
+  const minTerrainHeight = 60; // Minimum flat strip height from the bottom
+  terrainData = new ImageData(canvas.width, canvas.height);
+
+  // Generate a height map for the terrain using sine waves and randomness
+  for (let x = 0; x < canvas.width; x++) {
+    // Flat strip at the bottom
+    const base = canvas.height - minTerrainHeight;
+    // Add hills/noise on top of the flat strip
+    const hill = Math.sin(x / 80) * 18 + Math.sin(x / 23) * 7;
+    const noise = Math.random() * 6 - 3;
+    // The higher the value, the higher the terrain (closer to the top)
+    let height = Math.floor(base - terrainHeight - hill - noise);
+    // Clamp so terrain never goes below the flat strip
+    height = Math.min(height, base);
+    heights[x] = Math.max(0, Math.min(canvas.height, height));
+  }
+
+  // Initialize with transparent pixels
+  for (let i = 0; i < terrainData.data.length; i += 4) {
+    terrainData.data[i] = 0;
+    terrainData.data[i + 1] = 0;
+    terrainData.data[i + 2] = 0;
+    terrainData.data[i + 3] = 0;
+  }
+
+  // Set terrain pixels as green, following the generated height map
+  for (let x = 0; x < canvas.width; x++) {
+    // Fill from the calculated height down to the bottom
+    for (let y = heights[x]; y < canvas.height; y++) {
+      const index = (y * canvas.width + x) * 4;
+      terrainData.data[index] = 0;
+      terrainData.data[index + 1] = 128;
+      terrainData.data[index + 2] = 0;
+      terrainData.data[index + 3] = 255;
     }
-    
-    // Set the bottom pixels as green terrain
-    for (let x = 0; x < canvas.width; x++) {
-      for (let y = canvas.height - terrainHeight; y < canvas.height; y++) {
-        const index = (y * canvas.width + x) * 4;
-        terrainData.data[index] = 0;     // R
-        terrainData.data[index + 1] = 128; // G
-        terrainData.data[index + 2] = 0;   // B
-        terrainData.data[index + 3] = 255; // A (fully opaque)
-      }
-    }
+  }
+}
+
+  // Helper to get terrain surface y at a given x
+  function getTerrainYAt(x) {
+    x = Math.floor(x);
+    if (x < 0) x = 0;
+    if (x >= heights.length) x = heights.length - 1;
+    return heights[x];
+  }
+
+  // Helper to snap a tank to the terrain
+  function snapTankToTerrain(tankObj) {
+    tankObj.y = 0;
+    tankObj.y = getTerrainYAt(tankObj.x + tankObj.width / 2) - tankObj.height;
   }
 
   // Get pixel color at position
@@ -340,8 +404,8 @@
       return;
     }
     
-    const tankY = canvas.height - 20 - t.height;
-    
+    // const tankY = canvas.height - 20 - t.height;
+    const tankY = getTerrainYAt(t.x + t.width / 2) - t.height;
     // Draw tank body
     ctx.fillStyle = t.color || color;
     ctx.fillRect(t.x, tankY, t.width, t.height);
@@ -439,6 +503,7 @@
   }
 
   function loop() {
+    updateTankGravity;
     updateProjectile();
     updateExplosions();
     draw();
@@ -455,6 +520,7 @@
       if (existingPlayers[id] && existingPlayers[id].tank) {
         tank.x = existingPlayers[id].tank.x;
         tank.color = existingPlayers[id].tank.color || 'gray';
+        snapTankToTerrain(tank); // Snap your tank to the terrain here
       }
       
       // Get other players
@@ -465,7 +531,7 @@
       if (canvas) {
         for (const pid in players) {
           if (players[pid].tank) {
-            players[pid].tank.y = canvas.height - 20 - players[pid].tank.height;
+            snapTankToTerrain(players[pid].tank);
           }
         }
       }
@@ -476,7 +542,9 @@
       players[id] = data;
       // Make sure y position is set correctly
       if (players[id].tank && canvas) {
-        players[id].tank.y = canvas.height - 20 - players[id].tank.height;
+        snapTankToTerrain(players[id].tank); // Snap new tank to terrain
+
+        // players[id].tank.y = canvas.height - 20 - players[id].tank.height;
       }
     });
 
@@ -532,6 +600,8 @@
       <option value={weaponTypes.standard}>Standard Shell</option>
       <option value={weaponTypes.large}>Large Shell</option>
       <option value={weaponTypes.small}>Small Shell</option>
+      <option value={weaponTypes.hyper}>HyperTech Shell</option>
+      <option value={weaponTypes.nova}>Nova Shell</option>
     </select>
   </div>
 </div>

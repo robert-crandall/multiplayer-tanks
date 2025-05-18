@@ -85,7 +85,7 @@ io.on('connection', (socket) => {
     power: 50,
     tank: {
       x: spawnPosition,
-      y: 0, // Y position will be adjusted on the client based on ground level
+      y: 100, // Y position will be adjusted on the client based on ground level
       width: TANK_WIDTH,
       height: 20,
       color: '#' + Math.floor(Math.random() * 16777215).toString(16) // Random color
