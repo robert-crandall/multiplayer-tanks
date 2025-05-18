@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { io } from 'socket.io-client';
 
   let canvas;
   let ctx;
@@ -12,8 +13,13 @@
     x: 50,
     y: 0,
     width: 40,
-    height: 20
+    height: 20,
+    color: 'gray'
   };
+
+  let players = {}; // other players
+  let socket;
+  let playerId = null;
 
   function fire() {
     const radians = (angle * Math.PI) / 180;
@@ -36,14 +42,14 @@
     projectile.y += projectile.vy;
   }
 
-  function drawTank() {
-    ctx.fillStyle = 'gray';
-    ctx.fillRect(tank.x, canvas.height - 20 - tank.height, tank.width, tank.height);
+  function drawTank(t, angle, color = 'gray') {
+    ctx.fillStyle = color;
+    ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
     ctx.beginPath();
     const turretLength = 20;
     const turretAngle = (angle * Math.PI) / 180;
-    const turretX = tank.x + tank.width / 2;
-    const turretY = canvas.height - 20 - tank.height;
+    const turretX = t.x + t.width / 2;
+    const turretY = canvas.height - 20 - t.height;
     ctx.moveTo(turretX, turretY);
     ctx.lineTo(turretX + Math.cos(turretAngle) * turretLength, turretY - Math.sin(turretAngle) * turretLength);
     ctx.strokeStyle = 'black';
@@ -58,7 +64,11 @@
     ctx.fillStyle = 'green';
     ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
 
-    drawTank();
+    drawTank(tank, angle, 'gray');
+    for (const id in players) {
+      const p = players[id];
+      drawTank(p.tank, p.angle, 'blue');
+    }
 
     if (projectile) {
       ctx.beginPath();
@@ -74,6 +84,36 @@
     requestAnimationFrame(loop);
   }
 
+  function setupSocket() {
+    socket = io('http://localhost:3001');
+
+    socket.on('init', ({ id, players: existingPlayers }) => {
+      playerId = id;
+      players = { ...existingPlayers };
+      delete players[playerId];
+    });
+
+    socket.on('player-joined', ({ id }) => {
+      players[id] = { angle: 45, power: 50, tank: { x: 150, y: 0, width: 40, height: 20 } };
+    });
+
+    socket.on('player-updated', ({ id, data }) => {
+      if (players[id]) players[id] = data;
+    });
+
+    socket.on('player-left', ({ id }) => {
+      delete players[id];
+    });
+  }
+
+  $: if (socket && playerId) {
+    socket.emit('update-player', {
+      angle,
+      power,
+      tank
+    });
+  }
+
   onMount(() => {
     ctx = canvas.getContext('2d');
     canvas.width = 800;
@@ -81,6 +121,7 @@
     tank.y = canvas.height - 20 - tank.height;
     draw();
     loop();
+    setupSocket();
   });
 </script>
 
