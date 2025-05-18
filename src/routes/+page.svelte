@@ -4,14 +4,14 @@
 
   let canvas;
   let ctx;
-  let angle = 45;
+  let angle = 45; // Default to pointing right and up (0=up, 90=right, -90=left)
   let power = 50;
   let projectile = null;
   let wind = 0; // placeholder for now
 
   const tank = {
-    x: 50,
-    y: 0,
+    x: 50, // Initial position, will be set by server
+    y: 0,  // Will be adjusted based on canvas height
     width: 40,
     height: 20,
     color: 'gray'
@@ -23,12 +23,19 @@
 
   function fire() {
     const radians = (angle * Math.PI) / 180;
-    const speed = power / 2.75;
+    const speed = power;
     const vx = Math.cos(radians) * speed;
     const vy = -Math.sin(radians) * speed;
+    
+    const turretLength = 20;
+    const turretX = tank.x + tank.width / 2;
+    const turretY = canvas.height - 20 - tank.height;
+    const projectileStartX = turretX + Math.cos(radians) * turretLength;
+    const projectileStartY = turretY - Math.sin(radians) * turretLength;
+    
     projectile = {
-      x: tank.x + tank.width / 2,
-      y: canvas.height - 20 - tank.height,
+      x: projectileStartX,
+      y: projectileStartY,
       vx,
       vy,
       gravity: 0.5
@@ -43,11 +50,15 @@
   }
 
   function drawTank(t, angle, color = 'gray') {
-      ctx.fillStyle = color;
-      ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
+    ctx.fillStyle = color;
+    ctx.fillRect(t.x, canvas.height - 20 - t.height, t.width, t.height);
     ctx.beginPath();
     const turretLength = 20;
-    const turretAngle = (angle * Math.PI) / 180;
+    
+    // Converting angle (0=up, -90=left, 90=right) to standard radians
+    const adjustedAngle = 90 - angle; // This converts our system to standard angle (0=right, 90=up)
+    const turretAngle = (adjustedAngle * Math.PI) / 180;
+    
     const turretX = t.x + t.width / 2;
     const turretY = canvas.height - 20 - t.height;
     ctx.moveTo(turretX, turretY);
@@ -64,11 +75,11 @@
     ctx.fillStyle = 'green';
     ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
 
-    drawTank(tank, angle, 'gray');
+    drawTank(tank, angle);
     for (const id in players) {
       const p = players[id];
       drawTank(p.tank, p.angle, 'blue');
-  }
+    }
 
     if (projectile) {
       ctx.beginPath();
@@ -89,12 +100,34 @@
 
     socket.on('init', ({ id, players: existingPlayers }) => {
       playerId = id;
+      
+      // Set our own tank position from server data
+      if (existingPlayers[id] && existingPlayers[id].tank) {
+        tank.x = existingPlayers[id].tank.x;
+        tank.color = existingPlayers[id].tank.color || 'gray';
+      }
+      
+      // Get other players
       players = { ...existingPlayers };
       delete players[playerId];
+      
+      // Ensure y position is correct for all tanks
+      if (canvas) {
+        for (const pid in players) {
+          if (players[pid].tank) {
+            players[pid].tank.y = canvas.height - 20 - players[pid].tank.height;
+          }
+        }
+      }
     });
 
-    socket.on('player-joined', ({ id }) => {
-      players[id] = { angle: 45, power: 50, tank: { x: 150, y: 0, width: 40, height: 20 } };
+    socket.on('player-joined', ({ id, data }) => {
+      // Use the tank data sent from the server
+      players[id] = data;
+      // Make sure y position is set correctly
+      if (players[id].tank && canvas) {
+        players[id].tank.y = canvas.height - 20 - players[id].tank.height;
+      }
     });
 
     socket.on('player-updated', ({ id, data }) => {
@@ -119,16 +152,22 @@
     canvas.width = 800;
     canvas.height = 400;
     tank.y = canvas.height - 20 - tank.height;
+    
+    // Set up socket first to get tank position from server
+    setupSocket();
+    
+    // Start the game loop
     draw();
     loop();
-    setupSocket();
   });
 </script>
 
 <div class="controls">
-  <label>
-    Angle: <input type="range" min="0" max="90" bind:value={angle} /> {angle}
-  </label>
+  <div class="angle-control">
+    <label>
+      Angle: <input type="range" min="-90" max="90" bind:value={angle} /> {angle}°
+    </label>
+  </div>
   <label>
     Power: <input type="range" min="10" max="100" bind:value={power} /> {power}
   </label>
@@ -142,5 +181,18 @@
     display: flex;
     gap: 1rem;
     align-items: center;
+  }
+  
+  .angle-control {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .angle-indicators {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #555;
+    margin-top: -5px;
   }
 </style>
